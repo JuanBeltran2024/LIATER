@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabaseClient';
+import { supabase } from '@/lib/supabaseClient';
 import { Plus, Pencil, Trash2, X, Megaphone } from 'lucide-react';
 import { RoleBadge, StatusBadge, TypeBadge, Initials, ActionBtns, LoadingRow, EmptyRow, ConfirmModal } from './AdminShared';
-import { toLocalDatetimeString, parseLocalDatetime, formatShortDate } from '../../utils/dateUtils';
-import DeleteAnnouncementModal from '../DeleteAnnouncementModal';
+import { toLocalDatetimeString, parseLocalDatetime, formatShortDate } from '@/utils/dateUtils';
+import DeleteAnnouncementModal from '@/components/common/DeleteAnnouncementModal';
 
 export default function AnunciosTab({ programId }) {
   const [announcements, setAnnouncements] = useState([]);

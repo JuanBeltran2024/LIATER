@@ -1,5 +1,5 @@
-import { supabase } from '../lib/supabaseClient';
-import { safeJsonParse } from '../utils/storageUtils';
+import { supabase } from '@/lib/supabaseClient';
+import { safeJsonParse } from '@/utils/storageUtils';
 
 /**
  * Servicio: activityService

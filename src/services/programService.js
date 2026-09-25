@@ -2,7 +2,7 @@
  * Módulo: programService.js
  * Capa de servicios y datos para la gestión de programas, portadas y consulta de próximos programas.
  */
-import { supabase } from '../lib/supabaseClient';
+import { supabase } from '@/lib/supabaseClient';
 
 /**
  * Sube una imagen de portada al bucket de Supabase Storage 'program-covers'.

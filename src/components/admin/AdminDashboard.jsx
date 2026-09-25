@@ -5,7 +5,7 @@ import {
   CalendarPlus, Settings, CheckCircle, EyeOff, AlertCircle,
   Radio, Paperclip
 } from "lucide-react";
-import { formatShortDate } from "../../utils/dateUtils";
+import { formatShortDate } from '@/utils/dateUtils';
 
 export default function AdminDashboard({
   counts, upcomingClasses, isCourse, isPublished,

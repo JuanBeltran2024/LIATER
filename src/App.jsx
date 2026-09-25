@@ -6,8 +6,8 @@ import React, { Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 
 // --- Importación de Componentes de Layout ---
-import Layout from './components/Layout';
-import ProtectedRoute from './components/ProtectedRoute';
+import Layout from './components/layout/Layout';
+import ProtectedRoute from './components/layout/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
 
 // Listener para interceptar tokens de invitación o recuperación en el hash (#) y redirigir a /update-password
@@ -27,29 +27,35 @@ function AuthHashListener() {
   return null;
 }
 
-// --- Importación de Páginas con React.lazy para Code-Splitting ---
-const Home = React.lazy(() => import('./pages/Home'));
-const Login = React.lazy(() => import('./pages/Login'));
-const Dashboard = React.lazy(() => import('./pages/Dashboard'));
-const UpdatePassword = React.lazy(() => import('./pages/UpdatePassword'));
-const ModulesList = React.lazy(() => import('./pages/ModulesList'));
-const ModuleDetail = React.lazy(() => import('./pages/ModuleDetail'));
-const ClassDetail = React.lazy(() => import('./pages/ClassDetail'));
-const Teachers = React.lazy(() => import('./pages/Teachers'));
-const CourseResources = React.lazy(() => import('./pages/CourseResources'));
-const ClassesManagement = React.lazy(() => import('./pages/ClassesManagement'));
-const UserManagement = React.lazy(() => import('./pages/UserManagement'));
-const Communications = React.lazy(() => import('./pages/Communications'));
-const AdminPanel = React.lazy(() => import('./pages/AdminPanel'));
-const TeacherPanel = React.lazy(() => import('./pages/TeacherPanel'));
-const Portal = React.lazy(() => import('./pages/Portal'));
-const Profile = React.lazy(() => import('./pages/Profile'));
-const Support = React.lazy(() => import('./pages/Support'));
-const CourseViewerMock = React.lazy(() => import('./pages/CourseViewerMock'));
-const SyllabusRedirector = React.lazy(() => import('./pages/SyllabusRedirector'));
-const UpcomingPrograms = React.lazy(() => import('./pages/UpcomingPrograms'));
-const PendingActivities = React.lazy(() => import('./pages/PendingActivities'));
-const MisResultados = React.lazy(() => import('./pages/MisResultados'));
+// --- Importación de Páginas con React.lazy para Code-Splitting por Dominio ---
+
+// 1. Públicas y Autenticación
+const Home = React.lazy(() => import('./pages/public/Home'));
+const Login = React.lazy(() => import('./pages/public/Login'));
+const UpdatePassword = React.lazy(() => import('./pages/public/UpdatePassword'));
+const Support = React.lazy(() => import('./pages/public/Support'));
+
+// 2. Portal General del Usuario
+const Portal = React.lazy(() => import('./pages/portal/Portal'));
+const Profile = React.lazy(() => import('./pages/portal/Profile'));
+const UpcomingPrograms = React.lazy(() => import('./pages/portal/UpcomingPrograms'));
+const Communications = React.lazy(() => import('./pages/portal/Communications'));
+
+// 3. Entorno de Curso / Diplomado
+const Dashboard = React.lazy(() => import('./pages/course/Dashboard'));
+const ModulesList = React.lazy(() => import('./pages/course/ModulesList'));
+const ModuleDetail = React.lazy(() => import('./pages/course/ModuleDetail'));
+const ClassDetail = React.lazy(() => import('./pages/course/ClassDetail'));
+const Teachers = React.lazy(() => import('./pages/course/Teachers'));
+const CourseResources = React.lazy(() => import('./pages/course/CourseResources'));
+const SyllabusRedirector = React.lazy(() => import('./pages/course/SyllabusRedirector'));
+const PendingActivities = React.lazy(() => import('./pages/course/PendingActivities'));
+const MisResultados = React.lazy(() => import('./pages/course/MisResultados'));
+
+// 4. Paneles de Gestión Administrativa y Docente
+const AdminPanel = React.lazy(() => import('./pages/admin/AdminPanel'));
+const UserManagement = React.lazy(() => import('./pages/admin/UserManagement'));
+const TeacherPanel = React.lazy(() => import('./pages/teacher/TeacherPanel'));
 
 // --- Importación de Estilos Globales ---
 import './App.css';
@@ -101,7 +107,6 @@ function App() {
               <Route path="/proximos-programas" element={<UpcomingPrograms />} />
               <Route path="/pendientes" element={<PendingActivities />} />
               <Route path="/resultados/:programId" element={<MisResultados />} />
-              <Route path="/mock-course" element={<CourseViewerMock />} />
               
               <Route path="/dashboard/:programId" element={<ProtectedRoute allowedRoles={['student']}><Dashboard /></ProtectedRoute>} />
               <Route path="/dashboard/profesor/:programId" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherPanel /></ProtectedRoute>} />
@@ -114,7 +119,6 @@ function App() {
               <Route path="/teachers/:programId" element={<Teachers />} />
               <Route path="/resources/:programId" element={<CourseResources />} />
               <Route path="/recursos/:programId" element={<CourseResources />} />
-              <Route path="/classes/:programId" element={<ProtectedRoute allowedRoles={['teacher', 'admin']}><ClassesManagement /></ProtectedRoute>} />
               <Route path="/users" element={<ProtectedRoute allowedRoles={['admin']}><UserManagement /></ProtectedRoute>} />
               <Route path="/communications" element={<ProtectedRoute allowedRoles={['admin']}><Communications /></ProtectedRoute>} />
             </Route>

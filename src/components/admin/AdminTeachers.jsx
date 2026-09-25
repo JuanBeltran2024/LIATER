@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from "../../lib/supabaseClient";
+import { supabase } from '@/lib/supabaseClient';
 import { X, CheckCircle, Plus, Trash2, GraduationCap, MapPin, Phone, Eye, UserPlus, Search, Users, AlertCircle } from 'lucide-react';
 import { ConfirmModal } from './AdminShared';
 import { Link } from 'react-router-dom';

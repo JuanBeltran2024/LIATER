@@ -2,7 +2,7 @@
  * Módulo: doubtService.js
  * Servicio para gestión y persistencia de dudas de estudiantes por clase en Supabase.
  */
-import { supabase } from '../lib/supabaseClient';
+import { supabase } from '@/lib/supabaseClient';
 
 /**
  * Crea y guarda una nueva duda enviada por el estudiante para una clase específica.

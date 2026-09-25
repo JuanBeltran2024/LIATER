@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { supabase } from '../../lib/supabaseClient';
+import { supabase } from '@/lib/supabaseClient';
 import { 
   Plus, Pencil, Trash2, ChevronDown, ChevronRight, 
   Video, Clock, X, Zap, FileText, Link2, Eye
 } from 'lucide-react';
 import { ConfirmModal, ActionBtns } from './AdminShared';
-import { toLocalDatetimeString, parseLocalDatetime, formatShortDate } from '../../utils/dateUtils';
-import AdminClassReinforcement from '../AdminClassReinforcement';
-import TimePicker24h from '../common/TimePicker24h';
+import { toLocalDatetimeString, parseLocalDatetime, formatShortDate } from '@/utils/dateUtils';
+import AdminClassReinforcement from '@/components/admin/AdminClassReinforcement';
+import TimePicker24h from '@/components/common/TimePicker24h';
 
 // --- MODULE MODAL ---
 function ModuleModal({ isOpen, onClose, onRefresh, programId, initialData, modules = [] }) {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from "../../lib/supabaseClient";
+import { supabase } from '@/lib/supabaseClient';
 import { X, CheckCircle, Plus, Trash2, Eye, UserPlus, Search, Users, Calendar, AlertCircle } from 'lucide-react';
-import { formatShortDate } from '../../utils/dateUtils';
+import { formatShortDate } from '@/utils/dateUtils';
 import { ConfirmModal } from './AdminShared';
 import { Link } from 'react-router-dom';
 

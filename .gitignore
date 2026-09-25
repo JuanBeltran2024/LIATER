@@ -38,3 +38,4 @@ serviceAccount*.json
 *.njsproj
 *.sln
 *.sw?
+supabase/.temp/

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { supabase } from '../../lib/supabaseClient';
+import { supabase } from '@/lib/supabaseClient';
 import {
   Paperclip, FileText, Presentation, ExternalLink, Code, Video,
   Eye, EyeOff, Search, Plus, Trash2, Edit3, FolderDown,

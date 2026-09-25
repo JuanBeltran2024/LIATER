@@ -1,4 +1,0 @@
-- [x] Crear el componente visual `CourseViewerMock.jsx` con datos estáticos de prueba y un diseño premium.
-- [x] Incorporar estado para expandir/colapsar subtemas y cambiar de clase o de pestaña.
-- [x] Agregar la ruta `/mock-course` en `App.jsx`.
-- [x] Agregar el botón de acceso directo en el `Sidebar.jsx`.

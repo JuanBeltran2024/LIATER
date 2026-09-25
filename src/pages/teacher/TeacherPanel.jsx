@@ -18,8 +18,10 @@ import {
   ChevronLeft, ChevronRight, Award, GraduationCap, Percent,
   Calendar, FileSpreadsheet, Folder, Brain, BarChart3,
   TrendingUp, Target, Lightbulb, Activity, HelpCircle,
-  AlertTriangle, Star, Mail, Copy, Paperclip, FolderDown
+  AlertTriangle, Star, Mail, Copy, Paperclip, FolderDown,
+  Lock
 } from 'lucide-react';
+import { triggerResourceDownload } from '@/utils/resourceUtils';
 
 import './TeacherPanel.css';
 import AdminClassReinforcement from '@/components/admin/AdminClassReinforcement';
@@ -1855,26 +1857,49 @@ function ClassDetailModal({ selectedClass, allClasses, onClose, onClassUpdated, 
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setSelectedDoc(null)}
-                style={{
-                  background: 'rgba(0, 0, 0, 0.05)',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '0.45rem 0.8rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  fontSize: '0.82rem',
-                  color: 'var(--navy, #14213D)',
-                  transition: 'background 0.2s'
-                }}
-              >
-                <X size={16} /> Cerrar Visor
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => triggerResourceDownload(selectedDoc.url, selectedDoc.title)}
+                  title="Descargar material a tu equipo"
+                  style={{
+                    background: 'var(--navy, #14213D)',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '0.45rem 0.85rem',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
+                >
+                  <Download size={14} color="var(--gold, #FCA311)" />
+                  <span>Descargar</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDoc(null)}
+                  style={{
+                    background: 'rgba(0, 0, 0, 0.05)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '0.45rem 0.8rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontSize: '0.82rem',
+                    color: 'var(--navy, #14213D)',
+                    transition: 'background 0.2s'
+                  }}
+                >
+                  <X size={16} /> Cerrar Visor
+                </button>
+              </div>
             </div>
 
             {/* Contenedor del Iframe con Bloqueador de Redirección */}
@@ -8861,6 +8886,7 @@ function RecursosTab() {
   const [formType, setFormType] = useState('file');
   const [formUrl, setFormUrl] = useState('');
   const [formDescription, setFormDescription] = useState('');
+  const [formAllowDownload, setFormAllowDownload] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -8966,6 +8992,7 @@ function RecursosTab() {
     setFormType('file');
     setFormUrl('');
     setFormDescription('');
+    setFormAllowDownload(false);
     setSelectedFile(null);
     setModalError('');
     setModalSuccess('');
@@ -8981,6 +9008,7 @@ function RecursosTab() {
     setFormType(r.resource_type || r.type || 'file');
     setFormUrl(r.url || '');
     setFormDescription(r.description || '');
+    setFormAllowDownload(Boolean(r.allow_download));
     setSelectedFile(null);
     setModalError('');
     setModalSuccess('');
@@ -9011,7 +9039,8 @@ function RecursosTab() {
             url: formUrl.trim(),
             description: formDescription ? formDescription.trim() : null,
             class_id: targetDestination === 'general' ? null : targetDestination,
-            program_id: programId
+            program_id: programId,
+            allow_download: formAllowDownload
           })
           .eq('id', editingResource.id);
 
@@ -9039,6 +9068,7 @@ function RecursosTab() {
         formData.append('programId', programId);
         formData.append('classId', targetDestination === 'general' ? 'general' : targetDestination);
         formData.append('resourceType', formType === 'presentation' ? 'presentation' : 'file');
+        formData.append('allowDownload', String(formAllowDownload));
         if (formTitle.trim()) formData.append('customTitle', formTitle.trim());
 
         const { data, error } = await supabase.functions.invoke('upload-pdf-drive', {
@@ -9057,8 +9087,10 @@ function RecursosTab() {
         }
         if (data?.error) throw new Error(data.error);
 
-        if (formDescription && data?.resource?.id) {
-          await supabase.from('resources').update({ description: formDescription.trim() }).eq('id', data.resource.id);
+        if (data?.resource?.id) {
+          const updatePayload = { allow_download: formAllowDownload };
+          if (formDescription) updatePayload.description = formDescription.trim();
+          await supabase.from('resources').update(updatePayload).eq('id', data.resource.id);
         }
 
         setModalSuccess(`✓ Subido a Google Drive: "${data.formattedFileName || selectedFile.name}"`);
@@ -9093,7 +9125,8 @@ function RecursosTab() {
           class_id: targetDestination === 'general' ? null : targetDestination,
           program_id: programId,
           provider,
-          is_visible: true
+          is_visible: true,
+          allow_download: formAllowDownload
         }]);
 
         if (error) throw error;
@@ -9139,6 +9172,20 @@ function RecursosTab() {
       await fetchResources();
     } catch (err) {
       alert('Error cambiando visibilidad: ' + err.message);
+    }
+  };
+
+  const handleToggleAllowDownload = async (r) => {
+    try {
+      const nextAllow = !(r.allow_download ?? false);
+      const { error } = await supabase
+        .from('resources')
+        .update({ allow_download: nextAllow })
+        .eq('id', r.id);
+      if (error) throw error;
+      await fetchResources();
+    } catch (err) {
+      alert('Error cambiando permiso de descarga: ' + err.message);
     }
   };
 
@@ -9360,9 +9407,20 @@ function RecursosTab() {
                           <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: '6px', background: '#FEF3C7', color: '#B45309' }}>
                             GENERAL
                           </span>
-                          <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B' }}>
-                            {r.resource_type || r.type}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            {r.allow_download ? (
+                              <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: '#DCFCE7', color: '#15803D', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                <Download size={10} /> Descargable
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '0.66rem', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: '#F1F5F9', color: '#64748B', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                <Lock size={10} /> Solo lectura
+                              </span>
+                            )}
+                            <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B' }}>
+                              {r.resource_type || r.type}
+                            </span>
+                          </div>
                         </div>
                         <h4 style={{ margin: '0 0 0.3rem 0', fontSize: '0.94rem', fontWeight: 700, color: 'var(--navy, #14213D)' }}>
                           {r.title}
@@ -9394,6 +9452,19 @@ function RecursosTab() {
                         </button>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleAllowDownload(r)}
+                            title={r.allow_download ? 'Descarga permitida a estudiantes (Clic para bloquear)' : 'Descarga bloqueada a estudiantes (Clic para permitir)'}
+                            style={{
+                              background: r.allow_download ? '#DCFCE7' : '#F1F5F9',
+                              border: `1px solid ${r.allow_download ? '#86EFAC' : '#E2E8F0'}`,
+                              borderRadius: '6px', padding: '0.4rem',
+                              cursor: 'pointer', color: r.allow_download ? '#15803D' : '#94A3B8'
+                            }}
+                          >
+                            <Download size={13} />
+                          </button>
                           <button
                             type="button"
                             onClick={() => handleToggleVis(r)}
@@ -9461,9 +9532,20 @@ function RecursosTab() {
                           <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: '6px', background: '#EFF6FF', color: '#1D4ED8' }}>
                             {r.classTitle}
                           </span>
-                          <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B' }}>
-                            {r.resource_type || r.type}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            {r.allow_download ? (
+                              <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: '#DCFCE7', color: '#15803D', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                <Download size={10} /> Descargable
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '0.66rem', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: '#F1F5F9', color: '#64748B', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                <Lock size={10} /> Solo lectura
+                              </span>
+                            )}
+                            <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B' }}>
+                              {r.resource_type || r.type}
+                            </span>
+                          </div>
                         </div>
                         <h4 style={{ margin: '0 0 0.3rem 0', fontSize: '0.94rem', fontWeight: 700, color: 'var(--navy, #14213D)' }}>
                           {r.title}
@@ -9495,6 +9577,19 @@ function RecursosTab() {
                         </button>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleAllowDownload(r)}
+                            title={r.allow_download ? 'Descarga permitida a estudiantes (Clic para bloquear)' : 'Descarga bloqueada a estudiantes (Clic para permitir)'}
+                            style={{
+                              background: r.allow_download ? '#DCFCE7' : '#F1F5F9',
+                              border: `1px solid ${r.allow_download ? '#86EFAC' : '#E2E8F0'}`,
+                              borderRadius: '6px', padding: '0.4rem',
+                              cursor: 'pointer', color: r.allow_download ? '#15803D' : '#94A3B8'
+                            }}
+                          >
+                            <Download size={13} />
+                          </button>
                           <button
                             type="button"
                             onClick={() => handleToggleVis(r)}
@@ -9754,6 +9849,37 @@ function RecursosTab() {
                 />
               </div>
 
+              {/* PERMISO DE DESCARGA */}
+              <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.84rem', color: 'var(--navy, #14213D)', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={formAllowDownload}
+                      onChange={e => setFormAllowDownload(e.target.checked)}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--navy, #14213D)' }}
+                    />
+                    <span>Habilitar descarga a estudiantes</span>
+                  </label>
+                  <p style={{ margin: '0.2rem 0 0 1.5rem', fontSize: '0.74rem', color: '#64748B' }}>
+                    {formAllowDownload 
+                      ? '✓ Los estudiantes podrán descargar este archivo directamente a su equipo.'
+                      : '✗ Modo seguro: los estudiantes solo podrán visualizar el material en la plataforma sin botón de descarga.'}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  {formAllowDownload ? (
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#16A34A', background: '#DCFCE7', padding: '3px 8px', borderRadius: '6px' }}>
+                      Descargable
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', background: '#E2E8F0', padding: '3px 8px', borderRadius: '6px' }}>
+                      Solo lectura
+                    </span>
+                  )}
+                </div>
+              </div>
+
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
                 <button
                   type="button"
@@ -9812,13 +9938,28 @@ function RecursosTab() {
                   {selectedDoc.isGeneral ? 'Contenido General del Curso' : selectedDoc.classTitle}
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedDoc(null)}
-                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                <X size={17} />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => triggerResourceDownload(selectedDoc.url, selectedDoc.title)}
+                  title="Descargar archivo en tu equipo"
+                  style={{
+                    background: 'var(--navy, #14213D)', color: '#FFFFFF', border: 'none',
+                    borderRadius: '8px', padding: '0.4rem 0.85rem', fontSize: '0.78rem',
+                    fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.35rem'
+                  }}
+                >
+                  <Download size={14} color="var(--gold, #FCA311)" />
+                  <span>Descargar</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDoc(null)}
+                  style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <X size={17} />
+                </button>
+              </div>
             </div>
             <div style={{ flex: 1, position: 'relative', background: '#0F172A' }}>
               {/* Bloqueador invisible sobre la esquina superior derecha para inhabilitar el botón de redirección/pop-out de Google Drive */}

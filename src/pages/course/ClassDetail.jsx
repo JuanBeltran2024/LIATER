@@ -7,6 +7,7 @@ import { createDoubt, fetchStudentDoubtsForClass } from '@/services/doubtService
 import { calculateProgramProgressDetails } from '@/services/programService';
 import { isClassLiveOrSoon, formatClassDate } from '@/utils/dateUtils';
 import { safeJsonParse, safeSetItem, safeRemoveItem } from '@/utils/storageUtils';
+import { triggerResourceDownload } from '@/utils/resourceUtils';
 import {
   Download, FileText, Video, Calendar, User, ExternalLink,
   Paperclip, Presentation, ArrowLeft, ArrowRight, Clock, Award, HelpCircle,
@@ -265,6 +266,7 @@ export default function ClassDetail() {
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [resFormError, setResFormError] = useState('');
   const [resFormSuccess, setResFormSuccess] = useState('');
+  const [resFormAllowDownload, setResFormAllowDownload] = useState(false);
 
   // Eliminación de recursos
   const [resourceToDelete, setResourceToDelete] = useState(null);
@@ -313,6 +315,7 @@ export default function ClassDetail() {
     setResFormUrl('');
     setResFormType('presentation');
     setResFormDescription('');
+    setResFormAllowDownload(false);
     setUploadPdfFile(null);
     setResFormError('');
     setResFormSuccess('');
@@ -327,10 +330,25 @@ export default function ClassDetail() {
     setResFormUrl(res.url || '');
     setResFormType(res.resource_type || res.type || 'presentation');
     setResFormDescription(res.description || '');
+    setResFormAllowDownload(Boolean(res.allow_download));
     setUploadPdfFile(null);
     setResFormError('');
     setResFormSuccess('');
     setIsResourceModalOpen(true);
+  };
+
+  const handleToggleResourceDownload = async (res) => {
+    try {
+      const nextVal = !(res.allow_download ?? false);
+      const { error } = await supabase
+        .from('resources')
+        .update({ allow_download: nextVal })
+        .eq('id', res.id);
+      if (error) throw error;
+      await fetchResources();
+    } catch (err) {
+      alert('Error cambiando permiso de descarga: ' + err.message);
+    }
   };
 
   const handleSubmitResource = async (e) => {
@@ -350,6 +368,7 @@ export default function ClassDetail() {
         formData.append('classId', id);
         formData.append('programId', clsData?.program_id || '');
         formData.append('resourceType', resFormType || 'presentation');
+        formData.append('allowDownload', String(resFormAllowDownload));
         if (resFormTitle.trim()) {
           formData.append('customTitle', resFormTitle.trim());
         }
@@ -369,6 +388,12 @@ export default function ClassDetail() {
           throw new Error(msg);
         }
         if (data?.error) throw new Error(data.error);
+
+        if (data?.resource?.id) {
+          const updatePayload = { allow_download: resFormAllowDownload };
+          if (resFormDescription) updatePayload.description = resFormDescription.trim();
+          await supabase.from('resources').update(updatePayload).eq('id', data.resource.id);
+        }
 
         setResFormSuccess(`✓ Archivo subido con éxito a Google Drive: "${data.formattedFileName || uploadPdfFile.name}"`);
         await fetchResources();
@@ -403,6 +428,7 @@ export default function ClassDetail() {
           url: resFormUrl.trim(),
           description: resFormDescription ? resFormDescription.trim() : null,
           is_visible: true,
+          allow_download: resFormAllowDownload,
         };
 
         if (editingResource?.id) {
@@ -1804,6 +1830,15 @@ export default function ClassDetail() {
                           <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: '4px', background: '#e2e8f0', color: '#475569', fontWeight: 600, textTransform: 'uppercase' }}>
                             {res.resource_type || res.type || 'archivo'}
                           </span>
+                          {res.allow_download ? (
+                            <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: '#DCFCE7', color: '#15803D', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              <Download size={10} /> Descargable
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '0.66rem', fontWeight: 600, padding: '1px 6px', borderRadius: '4px', background: '#f1f5f9', color: '#64748B', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              <Lock size={10} /> Solo lectura
+                            </span>
+                          )}
                           {res.provider && res.provider !== 'drive' && (
                             <span style={{ fontSize: '0.68rem', color: '#64748b' }}>
                               • {res.provider}
@@ -1830,8 +1865,49 @@ export default function ClassDetail() {
                         <Eye size={14} /> Abrir
                       </button>
 
+                      {res.allow_download && (
+                        <button
+                          type="button"
+                          onClick={() => triggerResourceDownload(res.url, res.title)}
+                          title="Descargar material a tu equipo"
+                          style={{
+                            background: '#DCFCE7',
+                            color: '#15803D',
+                            border: '1px solid #86EFAC',
+                            borderRadius: '6px',
+                            padding: '0.4rem 0.75rem',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem'
+                          }}
+                        >
+                          <Download size={13} /> Descargar
+                        </button>
+                      )}
+
                       {canManageContent && (
                         <>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleResourceDownload(res)}
+                            title={res.allow_download ? 'Descarga permitida a estudiantes (Clic para bloquear)' : 'Descarga bloqueada a estudiantes (Clic para permitir)'}
+                            style={{
+                              padding: '0.4rem 0.65rem',
+                              background: res.allow_download ? '#DCFCE7' : '#ffffff',
+                              border: `1px solid ${res.allow_download ? '#86EFAC' : 'var(--border-color)'}`,
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              color: res.allow_download ? '#15803D' : '#64748b',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              fontSize: '0.76rem'
+                            }}
+                          >
+                            <Download size={13} />
+                          </button>
                           <button
                             type="button"
                             onClick={() => openEditResourceModal(res)}
@@ -3070,26 +3146,50 @@ export default function ClassDetail() {
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setSelectedDoc(null)}
-                style={{
-                  background: 'rgba(0, 0, 0, 0.05)',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '0.45rem 0.8rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  fontSize: '0.82rem',
-                  color: 'var(--navy, #14213d)',
-                  transition: 'background 0.2s'
-                }}
-              >
-                <X size={16} /> Cerrar
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {(selectedDoc.allow_download || canManageContent) && (
+                  <button
+                    type="button"
+                    onClick={() => triggerResourceDownload(selectedDoc.url, selectedDoc.title)}
+                    title="Descargar material a tu equipo"
+                    style={{
+                      background: 'var(--navy, #14213d)',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '0.45rem 0.85rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      cursor: 'pointer',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                    }}
+                  >
+                    <Download size={14} color="var(--gold, #FCA311)" /> Descargar
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedDoc(null)}
+                  style={{
+                    background: 'rgba(0, 0, 0, 0.05)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '0.45rem 0.8rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontSize: '0.82rem',
+                    color: 'var(--navy, #14213d)',
+                    transition: 'background 0.2s'
+                  }}
+                >
+                  <X size={16} /> Cerrar
+                </button>
+              </div>
             </div>
 
             {/* Contenedor del Iframe con Bloqueador de Redirección */}
@@ -3378,6 +3478,37 @@ export default function ClassDetail() {
                   </div>
                 </>
               )}
+
+              {/* PERMISO DE DESCARGA */}
+              <div style={{ background: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.84rem', color: 'var(--navy)', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={resFormAllowDownload}
+                      onChange={e => setResFormAllowDownload(e.target.checked)}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--navy)' }}
+                    />
+                    <span>Habilitar descarga a estudiantes</span>
+                  </label>
+                  <p style={{ margin: '0.2rem 0 0 1.5rem', fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                    {resFormAllowDownload 
+                      ? '✓ Los estudiantes podrán descargar este material a su dispositivo.'
+                      : '✗ Modo protegido: los estudiantes solo podrán visualizar el material en la plataforma sin descargarlo.'}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  {resFormAllowDownload ? (
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#16A34A', background: '#DCFCE7', padding: '3px 8px', borderRadius: '6px' }}>
+                      Descargable
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', background: '#E2E8F0', padding: '3px 8px', borderRadius: '6px' }}>
+                      Solo lectura
+                    </span>
+                  )}
+                </div>
+              </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem', marginTop: '0.5rem' }}>
                 <button

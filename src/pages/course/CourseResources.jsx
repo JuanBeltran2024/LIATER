@@ -8,8 +8,9 @@ import {
   Layers, Calendar, Clock, ChevronRight, X, Check, Copy,
   Sparkles, Home, BarChart2, Users, ListTree, FolderDown,
   Plus, Trash2, Edit3, EyeOff, Upload, Link as LinkIcon, Folder,
-  AlertCircle, RefreshCw, Info
+  AlertCircle, RefreshCw, Info, Lock
 } from 'lucide-react';
+import { triggerResourceDownload } from '@/utils/resourceUtils';
 
 /* ── HELPER: Formatear URL para embeber documentos de Google Drive ── */
 function formatEmbedDocUrl(url) {
@@ -106,6 +107,7 @@ export default function CourseResources() {
   const [formType, setFormType] = useState('file');
   const [formUrl, setFormUrl] = useState('');
   const [formDescription, setFormDescription] = useState('');
+  const [formAllowDownload, setFormAllowDownload] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -482,6 +484,7 @@ export default function CourseResources() {
     setFormType('file');
     setFormUrl('');
     setFormDescription('');
+    setFormAllowDownload(false);
     setSelectedFile(null);
     setModalError('');
     setModalSuccess('');
@@ -497,6 +500,7 @@ export default function CourseResources() {
     setFormType(res.resource_type || res.type || 'file');
     setFormUrl(res.url || '');
     setFormDescription(res.description || '');
+    setFormAllowDownload(Boolean(res.allow_download));
     setSelectedFile(null);
     setModalError('');
     setModalSuccess('');
@@ -530,7 +534,8 @@ export default function CourseResources() {
             url: formUrl.trim(),
             description: formDescription ? formDescription.trim() : null,
             class_id: targetClassId,
-            program_id: cleanProgramId
+            program_id: cleanProgramId,
+            allow_download: formAllowDownload
           })
           .eq('id', editingResource.id);
 
@@ -562,6 +567,7 @@ export default function CourseResources() {
         formData.append('programId', cleanProgramId);
         formData.append('classId', targetDestination === 'general' ? 'general' : targetDestination);
         formData.append('resourceType', formType === 'presentation' ? 'presentation' : 'file');
+        formData.append('allowDownload', String(formAllowDownload));
         if (formTitle.trim()) {
           formData.append('customTitle', formTitle.trim());
         }
@@ -582,11 +588,13 @@ export default function CourseResources() {
         }
         if (data?.error) throw new Error(data.error);
 
-        // Si se agregó descripción, actualizar el registro
-        if (formDescription && data?.resource?.id) {
+        // Si se agregó descripción o se debe asegurar allow_download, actualizar el registro
+        if (data?.resource?.id) {
+          const updatePayload = { allow_download: formAllowDownload };
+          if (formDescription) updatePayload.description = formDescription.trim();
           await supabase
             .from('resources')
-            .update({ description: formDescription.trim() })
+            .update(updatePayload)
             .eq('id', data.resource.id);
         }
 
@@ -628,7 +636,8 @@ export default function CourseResources() {
             class_id: targetClassId,
             program_id: cleanProgramId,
             provider,
-            is_visible: true
+            is_visible: true,
+            allow_download: formAllowDownload
           }]);
 
         if (error) throw error;
@@ -642,6 +651,23 @@ export default function CourseResources() {
       } finally {
         setIsSubmitting(false);
       }
+    }
+  };
+
+  // ── TOGGLE PERMISO DE DESCARGA ──
+  const handleToggleAllowDownload = async (res) => {
+    try {
+      const nextAllow = !(res.allow_download ?? false);
+      const { error } = await supabase
+        .from('resources')
+        .update({ allow_download: nextAllow })
+        .eq('id', res.id);
+
+      if (error) throw error;
+      await fetchCourseResources();
+    } catch (err) {
+      console.error('Error cambiando permiso de descarga:', err);
+      alert('No se pudo cambiar el permiso de descarga: ' + (err.message || String(err)));
     }
   };
 
@@ -811,6 +837,37 @@ export default function CourseResources() {
             )}
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              {/* PERMISO DE DESCARGA */}
+              {res.allow_download ? (
+                <span style={{
+                  fontSize: '0.66rem',
+                  fontWeight: 700,
+                  padding: '2px 7px',
+                  borderRadius: '6px',
+                  background: '#DCFCE7',
+                  color: '#15803D',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '3px'
+                }}>
+                  <Download size={10} /> Descargable
+                </span>
+              ) : (
+                <span style={{
+                  fontSize: '0.66rem',
+                  fontWeight: 600,
+                  padding: '2px 7px',
+                  borderRadius: '6px',
+                  background: '#F1F5F9',
+                  color: '#64748B',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '3px'
+                }}>
+                  <Lock size={10} /> Solo lectura
+                </span>
+              )}
+
               {/* INDICADOR DE OCULTO (SOLO TEACHER/ADMIN) */}
               {isHidden && (
                 <span style={{
@@ -949,6 +1006,33 @@ export default function CourseResources() {
             <span>{isDrive ? 'Abrir Material' : 'Abrir Enlace'}</span>
           </button>
 
+          {/* Botón Descargar (si está permitido) */}
+          {res.allow_download && (
+            <button
+              type="button"
+              onClick={() => triggerResourceDownload(res.url, res.title)}
+              title="Descargar material a tu equipo"
+              style={{
+                background: '#DCFCE7',
+                color: '#15803D',
+                border: '1px solid #86EFAC',
+                borderRadius: '8px',
+                padding: '0.5rem 0.85rem',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.35rem',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Download size={14} />
+              <span>Descargar</span>
+            </button>
+          )}
+
           {/* Si es de clase, enlace a la clase */}
           {!res.isGeneral && res.classId && (
             <Link
@@ -1009,6 +1093,25 @@ export default function CourseResources() {
           {/* ACCIONES DE GESTIÓN PARA DOCENTES Y ADMINS */}
           {canManage && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginLeft: 'auto' }}>
+              <button
+                type="button"
+                onClick={() => handleToggleAllowDownload(res)}
+                title={res.allow_download ? 'Descarga permitida a estudiantes (Clic para bloquear)' : 'Descarga bloqueada a estudiantes (Clic para permitir)'}
+                style={{
+                  background: res.allow_download ? '#DCFCE7' : '#F1F5F9',
+                  color: res.allow_download ? '#15803D' : '#64748B',
+                  border: `1px solid ${res.allow_download ? '#86EFAC' : '#E2E8F0'}`,
+                  borderRadius: '8px',
+                  padding: '0.5rem',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <Download size={14} />
+              </button>
+
               <button
                 type="button"
                 onClick={() => handleToggleVisibility(res)}
@@ -2011,6 +2114,37 @@ export default function CourseResources() {
                 />
               </div>
 
+              {/* PERMISO DE DESCARGA */}
+              <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.84rem', color: 'var(--navy, #14213D)', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={formAllowDownload}
+                      onChange={e => setFormAllowDownload(e.target.checked)}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--navy, #14213D)' }}
+                    />
+                    <span>Habilitar descarga a estudiantes</span>
+                  </label>
+                  <p style={{ margin: '0.2rem 0 0 1.5rem', fontSize: '0.74rem', color: '#64748B' }}>
+                    {formAllowDownload 
+                      ? '✓ Los estudiantes podrán descargar este material a su dispositivo.'
+                      : '✗ Modo protegido: los estudiantes solo podrán visualizar el material en la plataforma sin descargarlo.'}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  {formAllowDownload ? (
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#16A34A', background: '#DCFCE7', padding: '3px 8px', borderRadius: '6px' }}>
+                      Descargable
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', background: '#E2E8F0', padding: '3px 8px', borderRadius: '6px' }}>
+                      Solo lectura
+                    </span>
+                  )}
+                </div>
+              </div>
+
               {/* BOTONES DEL MODAL */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
                 <button
@@ -2119,6 +2253,29 @@ export default function CourseResources() {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                {(selectedDoc.allow_download || canManage) && (
+                  <button
+                    type="button"
+                    onClick={() => triggerResourceDownload(selectedDoc.url, selectedDoc.title)}
+                    title="Descargar material a tu equipo"
+                    style={{
+                      background: 'var(--navy, #14213D)',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '0.45rem 0.85rem',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem'
+                    }}
+                  >
+                    <Download size={14} color="var(--gold, #FCA311)" />
+                    <span>Descargar</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setSelectedDoc(null)}

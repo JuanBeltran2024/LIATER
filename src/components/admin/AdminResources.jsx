@@ -4,8 +4,10 @@ import { supabase } from '@/lib/supabaseClient';
 import {
   Paperclip, FileText, Presentation, ExternalLink, Code, Video,
   Eye, EyeOff, Search, Plus, Trash2, Edit3, FolderDown,
-  Layers, Calendar, X, Check, Upload, Link as LinkIcon, RefreshCw, AlertCircle
+  Layers, Calendar, X, Check, Upload, Link as LinkIcon, RefreshCw, AlertCircle,
+  Download, Lock
 } from 'lucide-react';
+import { getDownloadUrl, triggerResourceDownload } from '@/utils/resourceUtils';
 
 /* ── HELPER: Formatear URL para embeber documentos de Google Drive ── */
 function formatEmbedDocUrl(url) {
@@ -56,6 +58,7 @@ export default function AdminResources({ programId, programTitle, programClasses
   const [formType, setFormType] = useState('file');
   const [formUrl, setFormUrl] = useState('');
   const [formDescription, setFormDescription] = useState('');
+  const [formAllowDownload, setFormAllowDownload] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -160,6 +163,7 @@ export default function AdminResources({ programId, programTitle, programClasses
     setFormType('file');
     setFormUrl('');
     setFormDescription('');
+    setFormAllowDownload(false);
     setSelectedFile(null);
     setModalError('');
     setModalSuccess('');
@@ -175,6 +179,7 @@ export default function AdminResources({ programId, programTitle, programClasses
     setFormType(r.resource_type || r.type || 'file');
     setFormUrl(r.url || '');
     setFormDescription(r.description || '');
+    setFormAllowDownload(Boolean(r.allow_download));
     setSelectedFile(null);
     setModalError('');
     setModalSuccess('');
@@ -205,7 +210,8 @@ export default function AdminResources({ programId, programTitle, programClasses
             url: formUrl.trim(),
             description: formDescription.trim() || null,
             class_id: targetDestination === 'general' ? null : targetDestination,
-            program_id: programId
+            program_id: programId,
+            allow_download: formAllowDownload
           })
           .eq('id', editingResource.id);
 
@@ -235,6 +241,7 @@ export default function AdminResources({ programId, programTitle, programClasses
         formData.append('programId', programId);
         formData.append('classId', targetDestination === 'general' ? 'general' : targetDestination);
         formData.append('resourceType', formType === 'presentation' ? 'presentation' : 'file');
+        formData.append('allowDownload', String(formAllowDownload));
         if (formTitle.trim()) formData.append('customTitle', formTitle.trim());
 
         const { data, error } = await supabase.functions.invoke('upload-pdf-drive', {
@@ -253,8 +260,14 @@ export default function AdminResources({ programId, programTitle, programClasses
         }
         if (data?.error) throw new Error(data.error);
 
-        if (formDescription && data?.resource?.id) {
-          await supabase.from('resources').update({ description: formDescription.trim() }).eq('id', data.resource.id);
+        if (data?.resource?.id) {
+          await supabase
+            .from('resources')
+            .update({
+              description: formDescription.trim() || null,
+              allow_download: formAllowDownload
+            })
+            .eq('id', data.resource.id);
         }
 
         setModalSuccess(`✓ Subido exitosamente: "${data.formattedFileName || selectedFile.name}"`);
@@ -287,7 +300,8 @@ export default function AdminResources({ programId, programTitle, programClasses
             url: formUrl.trim(),
             description: formDescription.trim() || null,
             provider: formUrl.includes('drive.google.com') ? 'drive' : 'link',
-            is_visible: true
+            is_visible: true,
+            allow_download: formAllowDownload
           }]);
 
         if (error) throw error;
@@ -300,6 +314,22 @@ export default function AdminResources({ programId, programTitle, programClasses
       } finally {
         setIsSubmitting(false);
       }
+    }
+  };
+
+  const handleToggleAllowDownload = async (r) => {
+    try {
+      const nextState = !(r.allow_download ?? false);
+      const { error } = await supabase
+        .from('resources')
+        .update({ allow_download: nextState })
+        .eq('id', r.id);
+
+      if (error) throw error;
+      setResources(prev => prev.map(item => item.id === r.id ? { ...item, allow_download: nextState } : item));
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      alert('Error cambiando permiso de descarga: ' + (err.message || String(err)));
     }
   };
 
@@ -591,6 +621,15 @@ export default function AdminResources({ programId, programTitle, programClasses
                             GENERAL
                           </span>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            {r.allow_download ? (
+                              <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: '#DCFCE7', color: '#15803D', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                <Download size={10} /> Descargable
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '0.66rem', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: '#F1F5F9', color: '#64748B', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                <Lock size={10} /> Solo lectura
+                              </span>
+                            )}
                             {r.is_visible === false && (
                               <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: '#FEE2E2', color: '#DC2626' }}>
                                 Oculto
@@ -634,6 +673,20 @@ export default function AdminResources({ programId, programTitle, programClasses
                         </button>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleAllowDownload(r)}
+                            title={r.allow_download ? 'Descarga permitida a estudiantes (Clic para bloquear)' : 'Descarga bloqueada a estudiantes (Clic para permitir)'}
+                            style={{
+                              background: r.allow_download ? '#DCFCE7' : '#F1F5F9',
+                              border: `1px solid ${r.allow_download ? '#86EFAC' : '#E2E8F0'}`,
+                              borderRadius: '6px', width: '28px', height: '28px',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              cursor: 'pointer', color: r.allow_download ? '#15803D' : '#94A3B8'
+                            }}
+                          >
+                            <Download size={13} />
+                          </button>
                           <button
                             type="button"
                             onClick={() => handleToggleVisibility(r)}
@@ -724,6 +777,15 @@ export default function AdminResources({ programId, programTitle, programClasses
                             {r.classTitle}
                           </span>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            {r.allow_download ? (
+                              <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: '#DCFCE7', color: '#15803D', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                <Download size={10} /> Descargable
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '0.66rem', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: '#F1F5F9', color: '#64748B', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                <Lock size={10} /> Solo lectura
+                              </span>
+                            )}
                             {r.is_visible === false && (
                               <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: '#FEE2E2', color: '#DC2626' }}>
                                 Oculto
@@ -767,6 +829,20 @@ export default function AdminResources({ programId, programTitle, programClasses
                         </button>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleAllowDownload(r)}
+                            title={r.allow_download ? 'Descarga permitida a estudiantes (Clic para bloquear)' : 'Descarga bloqueada a estudiantes (Clic para permitir)'}
+                            style={{
+                              background: r.allow_download ? '#DCFCE7' : '#F1F5F9',
+                              border: `1px solid ${r.allow_download ? '#86EFAC' : '#E2E8F0'}`,
+                              borderRadius: '6px', width: '28px', height: '28px',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              cursor: 'pointer', color: r.allow_download ? '#15803D' : '#94A3B8'
+                            }}
+                          >
+                            <Download size={13} />
+                          </button>
                           <button
                             type="button"
                             onClick={() => handleToggleVisibility(r)}
@@ -1031,6 +1107,37 @@ export default function AdminResources({ programId, programTitle, programClasses
                 />
               </div>
 
+              {/* PERMISO DE DESCARGA */}
+              <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.84rem', color: 'var(--navy, #14213D)', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={formAllowDownload}
+                      onChange={e => setFormAllowDownload(e.target.checked)}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--navy, #14213D)' }}
+                    />
+                    <span>Habilitar descarga a estudiantes</span>
+                  </label>
+                  <p style={{ margin: '0.2rem 0 0 1.5rem', fontSize: '0.74rem', color: '#64748B' }}>
+                    {formAllowDownload 
+                      ? '✓ Los estudiantes podrán descargar este archivo directamente a su equipo.'
+                      : '✗ Modo seguro: los estudiantes solo podrán visualizar el material en la plataforma sin botón de descarga.'}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  {formAllowDownload ? (
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#16A34A', background: '#DCFCE7', padding: '3px 8px', borderRadius: '6px' }}>
+                      Descargable
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', background: '#E2E8F0', padding: '3px 8px', borderRadius: '6px' }}>
+                      Solo lectura
+                    </span>
+                  )}
+                </div>
+              </div>
+
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.6rem', marginTop: '0.5rem' }}>
                 <button
                   type="button"
@@ -1085,13 +1192,28 @@ export default function AdminResources({ programId, programTitle, programClasses
                   {selectedDoc.isGeneral ? 'Contenido General del Curso' : selectedDoc.classTitle}
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedDoc(null)}
-                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                <X size={17} />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => triggerResourceDownload(selectedDoc.url, selectedDoc.title)}
+                  title="Descargar archivo en tu equipo"
+                  style={{
+                    background: 'var(--navy, #14213D)', color: '#FFFFFF', border: 'none',
+                    borderRadius: '8px', padding: '0.4rem 0.85rem', fontSize: '0.78rem',
+                    fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.35rem'
+                  }}
+                >
+                  <Download size={14} color="var(--gold, #FCA311)" />
+                  <span>Descargar</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDoc(null)}
+                  style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <X size={17} />
+                </button>
+              </div>
             </div>
             <div style={{ flex: 1, position: 'relative', background: '#0F172A' }}>
               {/* Bloqueador invisible sobre la esquina superior derecha para inhabilitar el botón de redirección/pop-out de Google Drive */}

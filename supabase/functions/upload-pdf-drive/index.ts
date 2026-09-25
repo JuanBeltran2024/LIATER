@@ -200,6 +200,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const programId = formData.get("programId") as string | null;
     const resourceType = (formData.get("resourceType") as string) || "presentation";
     const customTitle = formData.get("customTitle") as string | null;
+    const allowDownloadRaw = formData.get("allowDownload") as string | null;
+    const allowDownload = allowDownloadRaw === "true" || allowDownloadRaw === "1";
 
     const isGeneralCourseResource = !classId || classId === "general" || classId === "null";
 
@@ -394,6 +396,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       provider: "drive",
       url: previewUrl,
       is_visible: true,
+      allow_download: allowDownload,
     };
 
     const { data: insertedResource, error: insertErr } = await supabase

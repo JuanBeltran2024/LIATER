@@ -116,6 +116,7 @@ CREATE TABLE IF NOT EXISTS public.resources (
   provider text DEFAULT 'external'::text CHECK (provider = ANY (ARRAY['drive'::text, 'youtube'::text, 'supabase'::text, 'external'::text])),
   file_path text,
   is_visible boolean DEFAULT true,
+  allow_download boolean NOT NULL DEFAULT false,
   CONSTRAINT resources_pkey PRIMARY KEY (id),
   CONSTRAINT resources_class_id_fkey FOREIGN KEY (class_id) REFERENCES public.class_sessions(id),
   CONSTRAINT resources_program_id_fkey FOREIGN KEY (program_id) REFERENCES public.diploma_programs(id)

@@ -344,7 +344,13 @@ export default function ClassDetail() {
         .from('resources')
         .update({ allow_download: nextVal })
         .eq('id', res.id);
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes('allow_download')) {
+          alert('Para alternar descargas, ejecuta la migración SQL en Supabase:\nALTER TABLE resources ADD COLUMN IF NOT EXISTS allow_download boolean NOT NULL DEFAULT false;');
+          return;
+        }
+        throw error;
+      }
       await fetchResources();
     } catch (err) {
       alert('Error cambiando permiso de descarga: ' + err.message);
@@ -392,7 +398,10 @@ export default function ClassDetail() {
         if (data?.resource?.id) {
           const updatePayload = { allow_download: resFormAllowDownload };
           if (resFormDescription) updatePayload.description = resFormDescription.trim();
-          await supabase.from('resources').update(updatePayload).eq('id', data.resource.id);
+          const { error: upErr } = await supabase.from('resources').update(updatePayload).eq('id', data.resource.id);
+          if (upErr && upErr.message?.includes('allow_download') && resFormDescription) {
+            await supabase.from('resources').update({ description: resFormDescription.trim() }).eq('id', data.resource.id);
+          }
         }
 
         setResFormSuccess(`✓ Archivo subido con éxito a Google Drive: "${data.formattedFileName || uploadPdfFile.name}"`);
@@ -431,12 +440,27 @@ export default function ClassDetail() {
           allow_download: resFormAllowDownload,
         };
 
+        let saveError = null;
         if (editingResource?.id) {
           const { error } = await supabase.from('resources').update(payload).eq('id', editingResource.id);
-          if (error) throw error;
+          saveError = error;
         } else {
           const { error } = await supabase.from('resources').insert([payload]);
-          if (error) throw error;
+          saveError = error;
+        }
+
+        if (saveError) {
+          if (saveError.message && saveError.message.includes('allow_download')) {
+            console.warn('Aviso: Columna allow_download no existe en el esquema remoto. Guardando sin ese campo...');
+            const fallbackPayload = { ...payload };
+            delete fallbackPayload.allow_download;
+            const retry = editingResource?.id
+              ? await supabase.from('resources').update(fallbackPayload).eq('id', editingResource.id)
+              : await supabase.from('resources').insert([fallbackPayload]);
+            if (retry.error) throw retry.error;
+          } else {
+            throw saveError;
+          }
         }
 
         setResFormSuccess('✓ Recurso guardado correctamente.');

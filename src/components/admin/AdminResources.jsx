@@ -202,20 +202,32 @@ export default function AdminResources({ programId, programTitle, programClasses
       }
       try {
         setIsSubmitting(true);
+        const updatePayload = {
+          title: formTitle.trim(),
+          resource_type: formType,
+          url: formUrl.trim(),
+          description: formDescription.trim() || null,
+          class_id: targetDestination === 'general' ? null : targetDestination,
+          program_id: programId,
+          allow_download: formAllowDownload
+        };
+
         const { error } = await supabase
           .from('resources')
-          .update({
-            title: formTitle.trim(),
-            resource_type: formType,
-            url: formUrl.trim(),
-            description: formDescription.trim() || null,
-            class_id: targetDestination === 'general' ? null : targetDestination,
-            program_id: programId,
-            allow_download: formAllowDownload
-          })
+          .update(updatePayload)
           .eq('id', editingResource.id);
 
-        if (error) throw error;
+        if (error) {
+          if (error.message?.includes('allow_download')) {
+            console.warn('Columna allow_download no existe aún, actualizando sin ella...');
+            delete updatePayload.allow_download;
+            const retry = await supabase.from('resources').update(updatePayload).eq('id', editingResource.id);
+            if (retry.error) throw retry.error;
+          } else {
+            throw error;
+          }
+        }
+
         setModalSuccess('✓ Recurso actualizado correctamente.');
         await fetchResources();
         if (onRefresh) onRefresh();
@@ -261,13 +273,18 @@ export default function AdminResources({ programId, programTitle, programClasses
         if (data?.error) throw new Error(data.error);
 
         if (data?.resource?.id) {
-          await supabase
+          const updatePayload = {
+            description: formDescription.trim() || null,
+            allow_download: formAllowDownload
+          };
+          const { error: upErr } = await supabase
             .from('resources')
-            .update({
-              description: formDescription.trim() || null,
-              allow_download: formAllowDownload
-            })
+            .update(updatePayload)
             .eq('id', data.resource.id);
+
+          if (upErr && upErr.message?.includes('allow_download') && formDescription.trim()) {
+            await supabase.from('resources').update({ description: formDescription.trim() }).eq('id', data.resource.id);
+          }
         }
 
         setModalSuccess(`✓ Subido exitosamente: "${data.formattedFileName || selectedFile.name}"`);
@@ -290,21 +307,33 @@ export default function AdminResources({ programId, programTitle, programClasses
       }
       try {
         setIsSubmitting(true);
+        const insertPayload = {
+          program_id: programId,
+          class_id: targetDestination === 'general' ? null : targetDestination,
+          title: formTitle.trim(),
+          resource_type: formType,
+          url: formUrl.trim(),
+          description: formDescription.trim() || null,
+          provider: formUrl.includes('drive.google.com') ? 'drive' : 'link',
+          is_visible: true,
+          allow_download: formAllowDownload
+        };
+
         const { error } = await supabase
           .from('resources')
-          .insert([{
-            program_id: programId,
-            class_id: targetDestination === 'general' ? null : targetDestination,
-            title: formTitle.trim(),
-            resource_type: formType,
-            url: formUrl.trim(),
-            description: formDescription.trim() || null,
-            provider: formUrl.includes('drive.google.com') ? 'drive' : 'link',
-            is_visible: true,
-            allow_download: formAllowDownload
-          }]);
+          .insert([insertPayload]);
 
-        if (error) throw error;
+        if (error) {
+          if (error.message?.includes('allow_download')) {
+            console.warn('Columna allow_download no existe aún, guardando sin ella...');
+            delete insertPayload.allow_download;
+            const retry = await supabase.from('resources').insert([insertPayload]);
+            if (retry.error) throw retry.error;
+          } else {
+            throw error;
+          }
+        }
+
         setModalSuccess('✓ Recurso guardado correctamente.');
         await fetchResources();
         if (onRefresh) onRefresh();
@@ -325,7 +354,13 @@ export default function AdminResources({ programId, programTitle, programClasses
         .update({ allow_download: nextState })
         .eq('id', r.id);
 
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes('allow_download')) {
+          alert('Para alternar descargas, ejecuta la migración SQL en Supabase:\nALTER TABLE resources ADD COLUMN IF NOT EXISTS allow_download boolean NOT NULL DEFAULT false;');
+          return;
+        }
+        throw error;
+      }
       setResources(prev => prev.map(item => item.id === r.id ? { ...item, allow_download: nextState } : item));
       if (onRefresh) onRefresh();
     } catch (err) {

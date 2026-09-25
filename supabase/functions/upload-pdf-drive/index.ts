@@ -399,6 +399,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       allow_download: allowDownload,
     };
 
+    let finalInsertedResource = null;
     const { data: insertedResource, error: insertErr } = await supabase
       .from("resources")
       .insert([resourcePayload])
@@ -407,6 +408,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     if (insertErr) {
       console.error("Error guardando en tabla resources:", insertErr);
+      if (
+        insertErr.message?.includes("allow_download") ||
+        insertErr.details?.includes("allow_download") ||
+        JSON.stringify(insertErr).includes("allow_download")
+      ) {
+        console.warn("Reintentando guardado de recurso sin allow_download...");
+        const fallbackPayload = { ...resourcePayload };
+        delete (fallbackPayload as any).allow_download;
+        const { data: retryData, error: retryErr } = await supabase
+          .from("resources")
+          .insert([fallbackPayload])
+          .select()
+          .single();
+        if (retryErr) {
+          console.error("Error en reintento de guardado:", retryErr);
+        } else {
+          finalInsertedResource = retryData;
+        }
+      }
+    } else {
+      finalInsertedResource = insertedResource;
     }
 
     // Si es presentación principal y pertenece a una clase, también actualizar presentation_url en class_sessions
@@ -423,7 +445,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       previewUrl,
       formattedFileName,
       targetFolderId: targetFolderId || "Raíz de la cuenta",
-      resource: insertedResource,
+      resource: finalInsertedResource,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

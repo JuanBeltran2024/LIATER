@@ -9031,20 +9031,32 @@ function RecursosTab() {
       }
       try {
         setIsSubmitting(true);
+        const updatePayload = {
+          title: formTitle.trim(),
+          resource_type: formType,
+          url: formUrl.trim(),
+          description: formDescription ? formDescription.trim() : null,
+          class_id: targetDestination === 'general' ? null : targetDestination,
+          program_id: programId,
+          allow_download: formAllowDownload
+        };
+
         const { error } = await supabase
           .from('resources')
-          .update({
-            title: formTitle.trim(),
-            resource_type: formType,
-            url: formUrl.trim(),
-            description: formDescription ? formDescription.trim() : null,
-            class_id: targetDestination === 'general' ? null : targetDestination,
-            program_id: programId,
-            allow_download: formAllowDownload
-          })
+          .update(updatePayload)
           .eq('id', editingResource.id);
 
-        if (error) throw error;
+        if (error) {
+          if (error.message?.includes('allow_download')) {
+            console.warn('Columna allow_download no existe aún, actualizando sin ella...');
+            delete updatePayload.allow_download;
+            const retry = await supabase.from('resources').update(updatePayload).eq('id', editingResource.id);
+            if (retry.error) throw retry.error;
+          } else {
+            throw error;
+          }
+        }
+
         setModalSuccess('Material actualizado correctamente.');
         await fetchResources();
         setTimeout(() => setShowModal(false), 1200);
@@ -9090,7 +9102,10 @@ function RecursosTab() {
         if (data?.resource?.id) {
           const updatePayload = { allow_download: formAllowDownload };
           if (formDescription) updatePayload.description = formDescription.trim();
-          await supabase.from('resources').update(updatePayload).eq('id', data.resource.id);
+          const { error: upErr } = await supabase.from('resources').update(updatePayload).eq('id', data.resource.id);
+          if (upErr && upErr.message?.includes('allow_download') && formDescription) {
+            await supabase.from('resources').update({ description: formDescription.trim() }).eq('id', data.resource.id);
+          }
         }
 
         setModalSuccess(`✓ Subido a Google Drive: "${data.formattedFileName || selectedFile.name}"`);
@@ -9117,7 +9132,7 @@ function RecursosTab() {
         if (urlLower.includes('drive.google.com')) provider = 'drive';
         else if (urlLower.includes('youtube.com') || urlLower.includes('youtu.be')) provider = 'youtube';
 
-        const { error } = await supabase.from('resources').insert([{
+        const insertPayload = {
           title: formTitle.trim(),
           resource_type: formType,
           url: formUrl.trim(),
@@ -9127,9 +9142,21 @@ function RecursosTab() {
           provider,
           is_visible: true,
           allow_download: formAllowDownload
-        }]);
+        };
 
-        if (error) throw error;
+        const { error } = await supabase.from('resources').insert([insertPayload]);
+
+        if (error) {
+          if (error.message?.includes('allow_download')) {
+            console.warn('Columna allow_download no existe aún, guardando sin ella...');
+            delete insertPayload.allow_download;
+            const retry = await supabase.from('resources').insert([insertPayload]);
+            if (retry.error) throw retry.error;
+          } else {
+            throw error;
+          }
+        }
+
         setModalSuccess('Material añadido exitosamente.');
         await fetchResources();
         setTimeout(() => setShowModal(false), 1200);
@@ -9182,7 +9209,13 @@ function RecursosTab() {
         .from('resources')
         .update({ allow_download: nextAllow })
         .eq('id', r.id);
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes('allow_download')) {
+          alert('Para alternar descargas, ejecuta la migración SQL en Supabase:\nALTER TABLE resources ADD COLUMN IF NOT EXISTS allow_download boolean NOT NULL DEFAULT false;');
+          return;
+        }
+        throw error;
+      }
       await fetchResources();
     } catch (err) {
       alert('Error cambiando permiso de descarga: ' + err.message);

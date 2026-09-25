@@ -12,10 +12,21 @@ dist
 dist-ssr
 *.local
 
-# Variables de entorno — NUNCA subir al repositorio
+# Variables de entorno y credenciales — ESTRICTAMENTE PROHIBIDO SUBIR AL REPOSITORIO
 .env
+.env.*
+!.env.example
 .env.local
-.env.production
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+*.cert
+*.p12
+*.pfx
+serviceAccount*.json
+*credentials*.json
 
 # Editor directories and files
 .vscode/*
